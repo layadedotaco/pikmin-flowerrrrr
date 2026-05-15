@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Pikmin 花苗座標偵測器</title>
+  <style>
+    :root{
+      --bg:#f6f8f5; --card:#ffffff; --text:#1f2a24; --muted:#66756b;
+      --line:#dfe7df; --accent:#4f9b5f; --accent2:#e7f5e9; --danger:#c85353;
+      --shadow:0 10px 30px rgba(28,55,33,.08); --radius:18px;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans TC",Arial,sans-serif;background:linear-gradient(180deg,#eef7ef,#f6f8f5 280px);color:var(--text)}
+    header{padding:28px 18px 14px;max-width:1180px;margin:auto}
+    h1{margin:0 0 8px;font-size:clamp(26px,4vw,42px);letter-spacing:.02em}
+    .sub{color:var(--muted);line-height:1.6;margin:0;max-width:760px}
+    main{max-width:1180px;margin:0 auto;padding:14px 18px 48px;display:grid;grid-template-columns:360px 1fr;gap:18px}
+    .card{background:rgba(255,255,255,.9);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:18px}
+    .panel{position:sticky;top:12px;align-self:start}
+    label{font-weight:700;display:block;margin:14px 0 8px}
+    .hint{font-size:13px;color:var(--muted);line-height:1.55;margin:6px 0 0}
+    input[type="file"],input[type="number"],input[type="text"],select{width:100%;padding:10px 11px;border:1px solid var(--line);border-radius:12px;background:white;font:inherit}
+    input[type="range"]{width:100%}
+    .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    button{border:0;border-radius:14px;padding:12px 14px;font-weight:800;font-size:15px;cursor:pointer;background:var(--accent);color:#fff;width:100%;box-shadow:0 6px 18px rgba(79,155,95,.22)}
+    button.secondary{background:#eef4ef;color:var(--text);box-shadow:none;border:1px solid var(--line)}
+    button.danger{background:#fff;color:var(--danger);border:1px solid #f0cccc;box-shadow:none}
+    .actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}
+    .bigbtn{grid-column:1/-1}
+    .template-list{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+    .template-chip{display:flex;align-items:center;gap:7px;background:var(--accent2);border:1px solid #cae9cf;border-radius:999px;padding:6px 9px;font-size:13px}
+    .template-chip img{width:24px;height:24px;object-fit:contain;border-radius:5px;background:#fff}
+    .stage{min-height:620px;display:flex;flex-direction:column;gap:14px}
+    .canvas-wrap{position:relative;overflow:auto;border-radius:var(--radius);border:1px dashed #cfd9d0;background:#fbfdfb;min-height:420px;display:flex;align-items:center;justify-content:center}
+    canvas{max-width:100%;height:auto;display:block}
+    .empty{text-align:center;color:var(--muted);padding:40px 20px;line-height:1.7}
+    table{width:100%;border-collapse:collapse;font-size:14px;overflow:hidden;border-radius:14px}
+    th,td{border-bottom:1px solid var(--line);padding:10px;text-align:left;vertical-align:middle}
+    th{background:#f0f6f1;color:#33453a;font-size:13px}
+    tr:hover td{background:#fbfdfb}
+    .pill{display:inline-flex;align-items:center;border-radius:999px;background:#edf7ef;color:#2e6e3b;padding:3px 8px;font-weight:700;font-size:12px}
+    .warn{background:#fff8e5;border:1px solid #f1d68a;color:#705400;border-radius:14px;padding:10px 12px;font-size:13px;line-height:1.55;margin-top:12px}
+    .footer-note{font-size:12px;color:var(--muted);line-height:1.6;margin-top:12px}
+    @media (max-width:860px){main{grid-template-columns:1fr}.panel{position:static}.stage{min-height:auto}.canvas-wrap{min-height:320px}}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>🌱 Pikmin 花苗座標偵測器</h1>
+    <p class="sub">上傳遊戲截圖與花苗模板圖，系統會用影像比對找出畫面中的花苗，框起來並整理成座標表。座標是圖片像素座標，可拿去對應點擊位置。</p>
+  </header>
+
+  <main>
+    <section class="card panel">
+      <label>1. 上傳遊戲截圖</label>
+      <input id="screenshotInput" type="file" accept="image/*" />
+      <p class="hint">建議用原始截圖，不要裁切或壓縮。</p>
+
+      <label>2. 上傳花苗模板圖</label>
+      <input id="templateInput" type="file" accept="image/*" multiple />
+      <p class="hint">模板就是你手動裁切出來的小花苗圖示。可一次放多張，例如紅苗、藍苗、巨大苗。</p>
+      <div id="templateList" class="template-list"></div>
+
+      <div class="row">
+        <div>
+          <label>相似度門檻</label>
+          <input id="threshold" type="range" min="0.45" max="0.95" step="0.01" value="0.72" />
+          <div class="hint">目前：<span id="thresholdText">0.72</span></div>
+        </div>
+        <div>
+          <label>掃描間隔 px</label>
+          <input id="stepSize" type="number" min="2" max="24" value="6" />
+          <div class="hint">越小越準，但越慢。</div>
+        </div>
+      </div>
+
+      <div class="row">
+        <div>
+          <label>重疊合併 px</label>
+          <input id="mergeDistance" type="number" min="5" max="160" value="55" />
+        </div>
+        <div>
+          <label>顯示模式</label>
+          <select id="labelMode">
+            <option value="box">方框＋編號</option>
+            <option value="dot">中心點＋編號</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button class="bigbtn" id="detectBtn">開始偵測</button>
+        <button class="secondary" id="downloadBtn">下載標註圖</button>
+        <button class="secondary" id="csvBtn">下載 CSV</button>
+        <button class="danger bigbtn" id="clearBtn">清除結果</button>
+      </div>
+
+      <div class="warn">小提醒：第一版是「模板比對」，所以模板截得越乾淨越準。若遊戲縮放比例不同，建議替同一種花苗放 2～3 張不同大小模板。</div>
+      <p class="footer-note">此工具完全在瀏覽器內執行，圖片不會上傳到任何伺服器。</p>
+    </section>
+
+    <section class="card stage">
+      <div id="canvasWrap" class="canvas-wrap">
+        <div id="empty" class="empty">先上傳截圖與模板，偵測結果會顯示在這裡 🍃</div>
+        <canvas id="canvas" style="display:none"></canvas>
+      </div>
+      <div>
+        <h2 style="margin:0 0 10px;font-size:20px">偵測結果</h2>
+        <div style="overflow:auto;border:1px solid var(--line);border-radius:14px;background:white">
+          <table>
+            <thead><tr><th>#</th><th>模板</th><th>中心座標 (x,y)</th><th>左上角 (x,y)</th><th>大小</th><th>相似度</th><th>位置描述</th></tr></thead>
+            <tbody id="resultBody"><tr><td colspan="7" style="color:#66756b;text-align:center;padding:20px">尚無結果</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </main>
+
+<script>
+const $ = (id)=>document.getElementById(id);
+const screenshotInput=$('screenshotInput'), templateInput=$('templateInput'), templateList=$('templateList');
+const canvas=$('canvas'), ctx=canvas.getContext('2d'), empty=$('empty'), resultBody=$('resultBody');
+const threshold=$('threshold'), thresholdText=$('thresholdText'), stepSize=$('stepSize'), mergeDistance=$('mergeDistance'), labelMode=$('labelMode');
+let screenshotImg=null, templates=[], results=[];
+
+threshold.addEventListener('input',()=>thresholdText.textContent=Number(threshold.value).toFixed(2));
+
+function loadImageFromFile(file){
+  return new Promise((resolve,reject)=>{
+    const img=new Image(); img.onload=()=>resolve(img); img.onerror=reject;
+    img.src=URL.createObjectURL(file);
+  });
+}
+
+screenshotInput.addEventListener('change', async e=>{
+  const file=e.target.files[0]; if(!file) return;
+  screenshotImg=await loadImageFromFile(file);
+  canvas.width=screenshotImg.naturalWidth; canvas.height=screenshotImg.naturalHeight;
+  canvas.style.display='block'; empty.style.display='none';
+  drawBase();
+});
+
+templateInput.addEventListener('change', async e=>{
+  const files=[...e.target.files];
+  for(const file of files){
+    const img=await loadImageFromFile(file);
+    templates.push({name:file.name.replace(/\.[^.]+$/,''), img, w:img.naturalWidth, h:img.naturalHeight});
+  }
+  renderTemplates();
+});
+
+function renderTemplates(){
+  templateList.innerHTML='';
+  templates.forEach((t,i)=>{
+    const chip=document.createElement('div'); chip.className='template-chip';
+    chip.innerHTML=`<img src="${t.img.src}"><span>${i+1}. ${escapeHtml(t.name)}</span>`;
+    templateList.appendChild(chip);
+  });
+}
+function escapeHtml(s){return s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+
+function drawBase(){
+  if(!screenshotImg)return;
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.drawImage(screenshotImg,0,0);
+  drawResults();
+}
+
+function getImageDataFromImage(img,w=img.naturalWidth,h=img.naturalHeight){
+  const c=document.createElement('canvas'); c.width=w; c.height=h;
+  const x=c.getContext('2d'); x.drawImage(img,0,0,w,h);
+  return x.getImageData(0,0,w,h);
+}
+function toGrayArray(imageData){
+  const d=imageData.data, arr=new Float32Array(imageData.width*imageData.height);
+  for(let i=0,j=0;i<d.length;i+=4,j++) arr[j]=0.299*d[i]+0.587*d[i+1]+0.114*d[i+2];
+  return arr;
+}
+function templateStats(gray){
+  let sum=0; for(const v of gray)sum+=v;
+  const mean=sum/gray.length;
+  let ss=0; for(const v of gray){const dv=v-mean; ss+=dv*dv;}
+  return {mean, denom:Math.sqrt(ss)||1};
+}
+function scoreAt(screenGray, sw, templateGray, tw, th, tx, ty, stats){
+  let sum=0, n=tw*th;
+  for(let y=0;y<th;y++) for(let x=0;x<tw;x++) sum+=screenGray[(ty+y)*sw+(tx+x)];
+  const mean=sum/n;
+  let numerator=0, ss=0;
+  for(let y=0;y<th;y++){
+    let si=(ty+y)*sw+tx, ti=y*tw;
+    for(let x=0;x<tw;x++){
+      const a=screenGray[si+x]-mean;
+      const b=templateGray[ti+x]-stats.mean;
+      numerator+=a*b; ss+=a*a;
+    }
+  }
+  return numerator/((Math.sqrt(ss)||1)*stats.denom);
+}
+function distance(a,b){return Math.hypot(a.cx-b.cx,a.cy-b.cy)}
+function mergeDetections(raw, dist){
+  raw.sort((a,b)=>b.score-a.score);
+  const kept=[];
+  for(const r of raw){
+    if(!kept.some(k=>distance(k,r)<dist)) kept.push(r);
+  }
+  return kept.sort((a,b)=>a.y-b.y || a.x-b.x);
+}
+function posText(cx,cy,w,h){
+  const horiz = cx < w/3 ? '左' : cx > w*2/3 ? '右' : '中';
+  const vert = cy < h/3 ? '上' : cy > h*2/3 ? '下' : '中';
+  if(horiz==='中'&&vert==='中') return '中央附近';
+  if(horiz==='中') return `${vert}方中央`;
+  if(vert==='中') return `中央偏${horiz}`;
+  return `${horiz}${vert}`;
+}
+
+$('detectBtn').addEventListener('click', async()=>{
+  if(!screenshotImg){alert('請先上傳遊戲截圖');return;}
+  if(!templates.length){alert('請先上傳至少一張花苗模板');return;}
+  drawBase(); resultBody.innerHTML='<tr><td colspan="7" style="text-align:center;padding:20px">偵測中，圖片大或間隔小會比較久…</td></tr>';
+  await new Promise(r=>setTimeout(r,30));
+  const screenData=getImageDataFromImage(screenshotImg);
+  const screenGray=toGrayArray(screenData), sw=screenData.width, sh=screenData.height;
+  const raw=[], step=Math.max(2,Number(stepSize.value)||6), thres=Number(threshold.value);
+  for(const [ti,t] of templates.entries()){
+    const tData=getImageDataFromImage(t.img), tg=toGrayArray(tData), stats=templateStats(tg);
+    const tw=tData.width, th=tData.height;
+    if(tw>sw || th>sh) continue;
+    for(let y=0;y<=sh-th;y+=step){
+      for(let x=0;x<=sw-tw;x+=step){
+        const score=scoreAt(screenGray, sw, tg, tw, th, x, y, stats);
+        if(score>=thres) raw.push({template:t.name, templateIndex:ti, x, y, w:tw, h:th, cx:x+tw/2, cy:y+th/2, score});
+      }
+    }
+  }
+  results=mergeDetections(raw, Number(mergeDistance.value)||55);
+  drawBase(); renderResults();
+});
+
+function drawResults(){
+  if(!results.length)return;
+  ctx.save(); ctx.lineWidth=Math.max(3,canvas.width/360); ctx.font=`${Math.max(18,canvas.width/55)}px -apple-system, BlinkMacSystemFont, sans-serif`; ctx.textBaseline='top';
+  results.forEach((r,i)=>{
+    ctx.strokeStyle='#28d14f'; ctx.fillStyle='rgba(40,209,79,.16)';
+    if(labelMode.value==='dot'){
+      ctx.beginPath(); ctx.arc(r.cx,r.cy,Math.max(10,canvas.width/120),0,Math.PI*2); ctx.fill(); ctx.stroke();
+    }else{ ctx.fillRect(r.x,r.y,r.w,r.h); ctx.strokeRect(r.x,r.y,r.w,r.h); }
+    const text=String(i+1); const tx=r.x, ty=Math.max(0,r.y-30);
+    ctx.fillStyle='rgba(20,75,31,.9)'; ctx.fillRect(tx,ty,ctx.measureText(text).width+18,26);
+    ctx.fillStyle='#fff'; ctx.fillText(text,tx+8,ty+3);
+  }); ctx.restore();
+}
+labelMode.addEventListener('change',drawBase);
+
+function renderResults(){
+  if(!results.length){resultBody.innerHTML='<tr><td colspan="7" style="color:#66756b;text-align:center;padding:20px">沒有偵測到。可以降低相似度門檻，或換更乾淨的模板。</td></tr>';return;}
+  resultBody.innerHTML=results.map((r,i)=>`<tr><td><span class="pill">${i+1}</span></td><td>${escapeHtml(r.template)}</td><td>(${Math.round(r.cx)}, ${Math.round(r.cy)})</td><td>(${r.x}, ${r.y})</td><td>${r.w}×${r.h}</td><td>${r.score.toFixed(3)}</td><td>${posText(r.cx,r.cy,canvas.width,canvas.height)}</td></tr>`).join('');
+}
+
+$('clearBtn').addEventListener('click',()=>{results=[]; drawBase(); renderResults();});
+$('downloadBtn').addEventListener('click',()=>{
+  if(!screenshotImg){alert('請先上傳截圖');return;} drawBase();
+  const a=document.createElement('a'); a.download='pikmin-seedling-detected.png'; a.href=canvas.toDataURL('image/png'); a.click();
+});
+$('csvBtn').addEventListener('click',()=>{
+  if(!results.length){alert('目前沒有結果');return;}
+  const header=['index','template','center_x','center_y','top_left_x','top_left_y','width','height','score','position'];
+  const rows=results.map((r,i)=>[i+1,r.template,Math.round(r.cx),Math.round(r.cy),r.x,r.y,r.w,r.h,r.score.toFixed(4),posText(r.cx,r.cy,canvas.width,canvas.height)]);
+  const csv=[header,...rows].map(row=>row.map(v=>`"${String(v).replaceAll('"','""')}"`).join(',')).join('\n');
+  const blob=new Blob([csv],{type:'text/csv;charset=utf-8'}); const a=document.createElement('a');
+  a.download='pikmin-seedling-results.csv'; a.href=URL.createObjectURL(blob); a.click();
+});
+</script>
+</body>
+</html>
